@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+shared_data/datasets/*.csv
+shared_data/jobs/*.json
+shared_data/mlflow/*
+!shared_data/datasets/.gitkeep
+!shared_data/jobs/.gitkeep
+!shared_data/mlflow/.gitkeep
+.DS_Store

@@ -1,0 +1,12 @@
+[
+  {
+    "targets": [
+      "served_model_ds_c1e7097d_v1:8000"
+    ],
+    "labels": {
+      "model_name": "model_ds_c1e7097d",
+      "version": "1",
+      "container_name": "served_model_ds_c1e7097d_v1"
+    }
+  }
+]

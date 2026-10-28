@@ -1,0 +1,109 @@
+services:
+  mlflow-server:
+    image: python:3.10-slim
+    container_name: mlflow-server
+    working_dir: /mlflow
+    volumes:
+      - model_factory_shared_data:/app/shared_data
+    command:
+      - sh
+      - -c
+      - >-
+        mkdir -p /app/shared_data/mlflow/artifacts &&
+        pip install --no-cache-dir mlflow==2.9.2 &&
+        mlflow server
+        --backend-store-uri sqlite:////app/shared_data/mlflow/mlflow.db
+        --default-artifact-root /app/shared_data/mlflow/artifacts
+        --host 0.0.0.0 --port 5000
+    ports:
+      - "5000:5000"
+    networks:
+      - model_factory_net
+
+  pair-a-service:
+    build: ./pair_a_service
+    container_name: pair-a-service
+    depends_on:
+      - mlflow-server
+    volumes:
+      - model_factory_shared_data:/app/shared_data
+    environment:
+      - DATASETS_DIR=/app/shared_data/datasets
+      - JOBS_DIR=/app/shared_data/jobs
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    ports:
+      - "5001:5001"
+    networks:
+      - model_factory_net
+
+  pair-b-controller:
+    build: ./pair_b_controller
+    container_name: pair-b-controller
+    depends_on:
+      - mlflow-server
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - model_factory_shared_data:/app/shared_data
+      - ./monitoring/prometheus:/app/monitoring/prometheus
+    environment:
+      - DOCKER_NETWORK=model_factory_net
+      - BASE_SERVER_IMAGE=model-factory-base-server:latest
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+      - TARGETS_FILE=/app/monitoring/prometheus/targets.json
+      - SHARED_VOLUME_NAME=model_factory_shared_data
+      - MAX_ACTIVE_MODELS=3
+      - CONTAINER_TTL_SECONDS=3600
+    ports:
+      - "5002:5002"
+    networks:
+      - model_factory_net
+
+  pair-b-frontend:
+    build: ./pair_b_frontend
+    container_name: pair-b-frontend
+    depends_on:
+      - pair-a-service
+      - pair-b-controller
+    environment:
+      - PAIR_A_URL=http://pair-a-service:5001
+      - PAIR_B_URL=http://pair-b-controller:5002
+    ports:
+      - "8501:8501"
+    networks:
+      - model_factory_net
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/targets.json:/etc/prometheus/targets.json:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - model_factory_net
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: grafana
+    depends_on:
+      - prometheus
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    networks:
+      - model_factory_net
+
+networks:
+  model_factory_net:
+    name: model_factory_net
+    driver: bridge
+
+volumes:
+  model_factory_shared_data:
+    name: model_factory_shared_data
